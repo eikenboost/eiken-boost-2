@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, BookOpen, CheckCircle2, Flame, MessageSquareQuote, Mic, Sparkles, TrendingUp } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SkillPill } from "@/components/ui/skill-pill";
-import { getStoredAssessment, getStoredProfile } from "@/lib/app-state";
-import { sampleAssessment, mockProfile } from "@/lib/mock-data";
+import { useStoredAssessment, useStoredProfile } from "@/lib/app-state";
 import { getRemainingUsage } from "@/lib/plans";
 import { jpDateLabel } from "@/lib/utils";
 import {
@@ -39,8 +38,14 @@ const skillIconTone: Record<string, "blue" | "amber" | "emerald"> = {
 
 export default function AppHomePage() {
   const router = useRouter();
-  const [profile] = useState(() => (typeof window === "undefined" ? mockProfile : getStoredProfile()));
-  const [assessment] = useState(() => (typeof window === "undefined" ? sampleAssessment : getStoredAssessment()));
+  // Hydration-safe: this page is statically pre-rendered, so the server
+  // always renders with the neutral mock defaults. `useStoredProfile` /
+  // `useStoredAssessment` use `useSyncExternalStore` under the hood, so they
+  // return the same mock defaults on the very first client render (matching
+  // the server-rendered HTML) and then re-render once with the real
+  // localStorage-backed values right after hydration.
+  const [profile] = useStoredProfile();
+  const assessment = useStoredAssessment();
 
   const tasks = useSyncExternalStore(
     subscribeStudyFlow,
@@ -59,9 +64,11 @@ export default function AppHomePage() {
   const completedCount = tasks.filter((t) => t.completed).length;
   const extraSessions = useMemo(() => getExtraSessions(sessions), [sessions]);
 
-  // Soft re-offer: if the user previously closed the paywall, gently bring it
-  // back only on a return visit several days later (Day 7 / Day 14), never on
-  // every home-screen load.
+  // Check for a soft re-offer once per mount: if the user previously closed
+  // the paywall, gently bring it back only on a return visit several days
+  // later (Day 7 / Day 14), never on every home-screen load. `profile` here
+  // already reflects the real (post-hydration) value by the time this effect
+  // runs, since `useSyncExternalStore` resolves before effects fire.
   useEffect(() => {
     const reason = shouldReoffer({
       planId: profile.planId,

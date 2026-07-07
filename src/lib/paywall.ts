@@ -1,3 +1,6 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
 import type {
   AssessmentResult,
   CompletedSession,
@@ -46,6 +49,28 @@ export function getPaywallVariant(): PaywallVariant {
   const assigned: PaywallVariant = Math.random() < 0.5 ? "A" : "B";
   writeJson(VARIANT_KEY, assigned);
   return assigned;
+}
+
+/**
+ * Server snapshot for `useSyncExternalStore`. The paywall page is statically
+ * pre-rendered, so the server always "sees" Variant A; the real (possibly
+ * randomly-assigned) variant is read on the client right after hydration via
+ * `getPaywallVariant`, avoiding any hydration mismatch.
+ */
+export function getPaywallVariantServerSnapshot(): PaywallVariant {
+  return "A";
+}
+
+// The variant is assigned once per browser and never changes afterwards, so
+// there's nothing to subscribe to — `useSyncExternalStore` just needs a
+// stable no-op subscribe function.
+function noopSubscribe() {
+  return () => {};
+}
+
+/** Hydration-safe variant reader: "A" on the server/first paint, then the real assigned variant. */
+export function usePaywallVariant(): PaywallVariant {
+  return useSyncExternalStore(noopSubscribe, getPaywallVariant, getPaywallVariantServerSnapshot);
 }
 
 // --- First-seen tracking (used for the Day 7 / Day 14 habit narrative) -----

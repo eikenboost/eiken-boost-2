@@ -1,23 +1,19 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, LogOut, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { getStoredProfile, saveStoredProfile } from "@/lib/app-state";
-import { mockProfile } from "@/lib/mock-data";
+import { useStoredProfile } from "@/lib/app-state";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function SettingsPage() {
-  const [profile, setProfile] = useState(() => (typeof window === "undefined" ? mockProfile : getStoredProfile()));
+  const [profile, updateProfile] = useStoredProfile();
   const router = useRouter();
 
   const updateExamDate = (examDate: string) => {
-    const next = { ...profile, examDate };
-    setProfile(next);
-    saveStoredProfile({ examDate });
+    updateProfile({ examDate });
   };
 
   return (

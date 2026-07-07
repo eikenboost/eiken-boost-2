@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BookOpenCheck, ClipboardCheck, MessagesSquare, X } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
@@ -9,18 +9,17 @@ import { SkillPill } from "@/components/ui/skill-pill";
 import { PlanCards } from "@/components/app/plan-cards";
 import { PlanComparison } from "@/components/app/plan-comparison";
 import { PaywallFaq } from "@/components/app/paywall-faq";
-import { getStoredProfile, getStoredAssessment } from "@/lib/app-state";
-import { mockProfile, sampleAssessment } from "@/lib/mock-data";
+import { useStoredProfile, useStoredAssessment } from "@/lib/app-state";
 import { creditPacks } from "@/lib/plans";
-import { getTodaySessionsSnapshot } from "@/lib/study-flow";
+import { getTodaySessionsServerSnapshot, getTodaySessionsSnapshot, subscribeStudyFlow } from "@/lib/study-flow";
 import {
   buildPaywallCopy,
   fallbackWeakAreas,
-  getPaywallVariant,
   hasHitFreeLimit,
   markReofferedFor,
   recordPaywallClosed,
   recordPaywallShown,
+  usePaywallVariant,
 } from "@/lib/paywall";
 import type { ReofferReason } from "@/lib/types";
 import { trackEvent } from "@/lib/analytics";
@@ -47,9 +46,23 @@ function PaywallPageInner() {
   const searchParams = useSearchParams();
   const reofferReason = searchParams.get("reoffer");
 
-  const [profile] = useState(() => (typeof window === "undefined" ? mockProfile : getStoredProfile()));
-  const [assessment] = useState(() => (typeof window === "undefined" ? sampleAssessment : getStoredAssessment()));
-  const [variant] = useState(() => (typeof window === "undefined" ? "A" : getPaywallVariant()));
+  // Hydration-safe pattern: this page is statically pre-rendered, so the
+  // server always renders with neutral defaults (mock profile/assessment,
+  // Variant A, 0 completed sessions today). `useSyncExternalStore` reads
+  // localStorage on the client but keeps returning the server's snapshot
+  // until after hydration, then re-renders once with the real values — this
+  // avoids the hydration mismatch that a plain
+  // `useState(() => getStoredProfile())` would cause whenever the user's
+  // real data differs from the defaults (e.g. after onboarding, or after
+  // completing tasks today).
+  const [profile] = useStoredProfile();
+  const assessment = useStoredAssessment();
+  const variant = usePaywallVariant();
+  const todaysCompletedCount = useSyncExternalStore(
+    subscribeStudyFlow,
+    () => getTodaySessionsSnapshot().length,
+    () => getTodaySessionsServerSnapshot().length,
+  );
   const [loading, setLoading] = useState<string | null>(null);
 
   const onboardingWeakAreas = profile.weakAreas as typeof assessment.weakAreas;
@@ -57,8 +70,6 @@ function PaywallPageInner() {
     () => fallbackWeakAreas(assessment, onboardingWeakAreas),
     [assessment, onboardingWeakAreas],
   );
-
-  const todaysCompletedCount = typeof window === "undefined" ? 0 : getTodaySessionsSnapshot().length;
 
   const hitLimit = hasHitFreeLimit(profile.planId, profile.usedWriting, profile.usedSpeaking);
 
@@ -75,6 +86,10 @@ function PaywallPageInner() {
       ? `${copy.weaknessSentence.replace("あなたの苦手分野：", "")}を集中的に強化 → ${copy.primaryValueBullet}`
       : null;
 
+  // Fires once the real (post-hydration) profile/assessment/variant/session
+  // data is in — `copy` above is derived from the same `useSyncExternalStore`
+  // values, so by the time this effect runs it already reflects the real
+  // personalization, not the server-rendered placeholder.
   useEffect(() => {
     recordPaywallShown();
     trackEvent("paywall_viewed", { contextType: copy.contextType, variant, reoffer: reofferReason ?? undefined });
