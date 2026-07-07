@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LoaderCircle, Mic, Sparkles } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
@@ -9,9 +10,11 @@ import { TaskCompletion } from "@/components/app/task-completion";
 import { FinishToday } from "@/components/app/finish-today";
 import { getSpeakingPrompt, coachComment as buildCoachComment } from "@/lib/study-flow";
 import { useTaskFlow } from "@/lib/use-task-flow";
+import { hasHitFreeLimit } from "@/lib/paywall";
 import type { SpeakingFeedback } from "@/lib/types";
 
 function SpeakingPageInner() {
+  const router = useRouter();
   const flow = useTaskFlow("speaking");
   const prompt = useMemo(() => getSpeakingPrompt(flow.params.contentIndex), [flow.params.contentIndex]);
 
@@ -19,7 +22,13 @@ function SpeakingPageInner() {
   const [feedback, setFeedback] = useState<SpeakingFeedback | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const limitReached = hasHitFreeLimit(flow.profile.planId, flow.profile.usedWriting, flow.profile.usedSpeaking);
+
   const submit = async () => {
+    if (limitReached) {
+      router.push("/app/paywall");
+      return;
+    }
     setLoading(true);
     const response = await fetch("/api/ai/feedback", {
       method: "POST",
@@ -73,25 +82,35 @@ function SpeakingPageInner() {
         </ul>
       </Card>
 
-      <Card className="mt-5 rounded-[1.75rem]">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
-          <Mic className="h-4 w-4 text-violet-700" />
-          答えを英語で入力
-        </div>
-        <textarea
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          rows={8}
-          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none"
-          placeholder="結論 → 理由 → 例 の3文を目安に入力"
-        />
-        <div className="mt-4">
-          <Button onClick={submit} disabled={loading || answer.trim().length < 12} className="w-full justify-center">
-            {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            フィードバックを受ける
+      {limitReached ? (
+        <Card className="mt-5 rounded-[1.75rem] bg-rose-50">
+          <p className="text-sm font-semibold text-rose-700">今週の無料面接練習回数を使い切りました</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Proなら面接練習をもっと使えます。不安が減るまで、何度でも練習しましょう。</p>
+          <Button onClick={() => router.push("/app/paywall")} className="mt-4 w-full justify-center">
+            プランを見る
           </Button>
-        </div>
-      </Card>
+        </Card>
+      ) : (
+        <Card className="mt-5 rounded-[1.75rem]">
+          <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <Mic className="h-4 w-4 text-violet-700" />
+            答えを英語で入力
+          </div>
+          <textarea
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            rows={8}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none"
+            placeholder="結論 → 理由 → 例 の3文を目安に入力"
+          />
+          <div className="mt-4">
+            <Button onClick={submit} disabled={loading || answer.trim().length < 12} className="w-full justify-center">
+              {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              フィードバックを受ける
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {feedback ? (
         <div className="mt-5 space-y-4">

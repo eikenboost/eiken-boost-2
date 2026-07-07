@@ -21,6 +21,7 @@ export const planCatalog = {
     id: "pro_monthly",
     name: "Pro Monthly",
     priceLabel: "¥1,980 / 月",
+    priceYen: 1980,
     writingLimit: 3,
     speakingLimit: 3,
     period: "月",
@@ -37,11 +38,12 @@ export const planCatalog = {
     id: "pro_annual",
     name: "Pro Annual",
     priceLabel: "¥14,800 / 年",
+    priceYen: 14800,
     writingLimit: 12,
     speakingLimit: 12,
     period: "月",
     highlight: true,
-    badge: "いちばんお得",
+    badge: "おすすめ",
     features: [
       "全コア学習機能",
       "ライティング添削 月12回",
@@ -73,4 +75,34 @@ export function getRemainingUsage(planId: PlanId, usedWriting = 0, usedSpeaking 
     writingRemaining: Math.max(plan.writingLimit - usedWriting, 0),
     speakingRemaining: Math.max(plan.speakingLimit - usedSpeaking, 0),
   };
+}
+
+// --- Transparent pricing helpers for the paywall ---
+// All numbers are derived directly from planCatalog so the UI never shows
+// a savings percentage that doesn't match the actual prices.
+
+/** Annual price expressed as an equivalent monthly cost, rounded to the nearest yen. */
+export function annualMonthlyEquivalent(): number {
+  return Math.round(planCatalog.pro_annual.priceYen / 12);
+}
+
+/** What 12 months of the monthly plan would cost, for an honest side-by-side comparison. */
+export function monthlyPlanYearlyCost(): number {
+  return planCatalog.pro_monthly.priceYen * 12;
+}
+
+/** Percentage saved by choosing annual over 12x monthly, rounded to the nearest whole percent. */
+export function annualSavingsPercent(): number {
+  const yearlyIfMonthly = monthlyPlanYearlyCost();
+  const annual = planCatalog.pro_annual.priceYen;
+  return Math.round(((yearlyIfMonthly - annual) / yearlyIfMonthly) * 100);
+}
+
+/** Yen amount saved per year by choosing annual over paying monthly for 12 months. */
+export function annualSavingsYen(): number {
+  return monthlyPlanYearlyCost() - planCatalog.pro_annual.priceYen;
+}
+
+export function formatYen(value: number): string {
+  return `¥${value.toLocaleString("ja-JP")}`;
 }

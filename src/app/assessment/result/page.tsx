@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useStoredAssessment } from "@/lib/app-state";
 import Link from "next/link";
 import { ArrowRight, CircleAlert, Trophy } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SkillPill } from "@/components/ui/skill-pill";
-import { getStoredAssessment } from "@/lib/app-state";
-import { sampleAssessment } from "@/lib/mock-data";
-import type { AssessmentResult } from "@/lib/types";
 
 const skillLabel: Record<string, string> = {
   vocab: "単語",
@@ -18,7 +15,10 @@ const skillLabel: Record<string, string> = {
 };
 
 export default function AssessmentResultPage() {
-  const [result] = useState<AssessmentResult>(() => (typeof window === "undefined" ? sampleAssessment : getStoredAssessment()));
+  // Hydration-safe: starts with the sample assessment (matching what the
+  // server rendered) and swaps in the real localStorage-backed result after
+  // mount, avoiding a mismatch when the user's actual assessment differs.
+  const result = useStoredAssessment();
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-md px-5 pb-10 pt-6">

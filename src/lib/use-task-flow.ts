@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { Skill, TaskSource, UserChoiceAfterCompletion } from "@/lib/types";
-import { getStoredProfile, getStoredAssessment } from "@/lib/app-state";
-import { mockProfile, sampleAssessment } from "@/lib/mock-data";
+import { useStoredAssessment, useStoredProfile } from "@/lib/app-state";
 import {
   addRecommendedTask,
   addSession,
@@ -19,6 +18,7 @@ import {
   parseTaskParams,
   recordUserChoice,
 } from "@/lib/study-flow";
+import { shouldReoffer } from "@/lib/paywall";
 
 type Phase = "task" | "completion" | "finished";
 
@@ -31,8 +31,14 @@ export function useTaskFlow(skill: Skill) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [profile] = useState(() => (typeof window === "undefined" ? mockProfile : getStoredProfile()));
-  const [assessment] = useState(() => (typeof window === "undefined" ? sampleAssessment : getStoredAssessment()));
+  // Hydration-safe: these skill pages are statically pre-rendered, so the
+  // server always renders with the neutral mock defaults. `useStoredProfile` /
+  // `useStoredAssessment` use `useSyncExternalStore` under the hood, so they
+  // return the same mock defaults on the very first client render (matching
+  // the server-rendered HTML) and then re-render once with the real
+  // localStorage-backed values right after hydration.
+  const [profile] = useStoredProfile();
+  const assessment = useStoredAssessment();
   const weakAreas = assessment.weakAreas;
 
   const params = useMemo(() => {
@@ -116,9 +122,23 @@ export function useTaskFlow(skill: Skill) {
     );
   }
 
+  function maybeReofferOrHome() {
+    const completedCount = getTodaySessions().length;
+    const reason = shouldReoffer({
+      planId: profile.planId,
+      trigger: "task_completed",
+      todaysCompletedCount: completedCount,
+    });
+    if (reason) {
+      router.push(`/app/paywall?reoffer=${reason}`);
+      return;
+    }
+    router.push("/app");
+  }
+
   function goHome() {
     recordChoice("go_home");
-    router.push("/app");
+    maybeReofferOrHome();
   }
 
   function finishToday() {
