@@ -70,3 +70,36 @@ export type SpeakingFeedback = {
   sampleAnswer: string;
   coachComment: string;
 };
+
+// --- Post-task completion flow ---
+
+/** Where a completed study session originated from. */
+export type TaskSource = "recommended_task" | "repeated_task" | "bonus_task";
+
+/** What the user chose to do right after finishing a task. */
+export type UserChoiceAfterCompletion =
+  | "next_recommended"
+  | "repeat_same"
+  | "go_home"
+  | "finish_today";
+
+/** One of today's recommended tasks shown on the home screen. */
+export type RecommendedTask = {
+  id: string;
+  skill: Skill;
+  title: string;
+  meta: string;
+  contentIndex: number;
+  completed: boolean;
+};
+
+/** A record of one finished study session (recommended, repeated, or bonus). */
+export type CompletedSession = {
+  id: string;
+  category: Skill;
+  source: TaskSource;
+  completedAt: string;
+  sourceTaskId?: string;
+  score?: number;
+  userChoiceAfterCompletion?: UserChoiceAfterCompletion;
+};

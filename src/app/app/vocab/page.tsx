@@ -1,25 +1,72 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { CheckCircle2, Heart, RotateCcw, XCircle } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { sampleVocab } from "@/lib/mock-data";
+import { TaskCompletion } from "@/components/app/task-completion";
+import { FinishToday } from "@/components/app/finish-today";
+import { getVocabSet, coachComment as buildCoachComment } from "@/lib/study-flow";
+import { useTaskFlow } from "@/lib/use-task-flow";
 
-export default function VocabPage() {
+function VocabPageInner() {
+  const flow = useTaskFlow("vocab");
+  const vocabSet = useMemo(() => getVocabSet(flow.params.contentIndex), [flow.params.contentIndex]);
+
   const [index, setIndex] = useState(0);
   const [selected, setSelected] = useState<string | null>(null);
   const [favorites, setFavorites] = useState<string[]>([]);
-  const question = sampleVocab[index];
+  const [correctCount, setCorrectCount] = useState(0);
+
+  const question = vocabSet[index];
   const correct = selected === question.answer;
   const completed = selected !== null;
-  const reviewWords = useMemo(() => sampleVocab.filter((item) => item.answer !== selected && item.id === question.id), [question.id, selected]);
+  const isLastQuestion = index === vocabSet.length - 1;
+
+  const handleNext = () => {
+    const nextCorrectCount = correct ? correctCount + 1 : correctCount;
+    if (isLastQuestion) {
+      const score = Math.round((nextCorrectCount / vocabSet.length) * 100);
+      flow.complete(score, `単語 ${vocabSet.length} 問中 ${nextCorrectCount} 問正解でした。`);
+      return;
+    }
+    setCorrectCount(nextCorrectCount);
+    setSelected(null);
+    setIndex((current) => current + 1);
+  };
+
+  if (flow.phase === "finished") {
+    return (
+      <MobileShell title="単語トレーニング" subtitle="今日もお疲れさまでした。">
+        <FinishToday completedCount={flow.todaysCompletedCount} onGoHome={flow.goHome} />
+      </MobileShell>
+    );
+  }
+
+  if (flow.phase === "completion") {
+    return (
+      <MobileShell title="単語トレーニング" subtitle="1問ずつ、すぐに正解と解説を確認できます。">
+        <TaskCompletion
+          skill="vocab"
+          source={flow.params.source}
+          score={flow.score}
+          summary={flow.summary}
+          coachComment={buildCoachComment("vocab", flow.score)}
+          nextButtonLabel={flow.nextButtonLabel}
+          onNextRecommended={flow.goNextRecommended}
+          onRepeatSame={flow.goRepeatSame}
+          onGoHome={flow.goHome}
+          onFinishToday={flow.finishToday}
+        />
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell title="単語トレーニング" subtitle="1問ずつ、すぐに正解と解説を確認できます。">
       <Card className="rounded-[2rem] bg-sky-600 text-white">
-        <p className="text-sm text-sky-100">問題 {index + 1} / {sampleVocab.length}</p>
+        <p className="text-sm text-sky-100">問題 {index + 1} / {vocabSet.length}</p>
         <h2 className="mt-2 text-3xl font-black">{question.word}</h2>
         <p className="mt-2 text-sm text-sky-100">タグ: {question.tag}</p>
       </Card>
@@ -55,14 +102,8 @@ export default function VocabPage() {
               <Heart className="mr-2 h-4 w-4" />
               苦手保存
             </Button>
-            <Button
-              onClick={() => {
-                setSelected(null);
-                setIndex((current) => (current + 1) % sampleVocab.length);
-              }}
-              className="flex-1 justify-center"
-            >
-              次へ
+            <Button onClick={handleNext} className="flex-1 justify-center">
+              {isLastQuestion ? "完了する" : "次へ"}
             </Button>
           </div>
         </Card>
@@ -73,8 +114,16 @@ export default function VocabPage() {
           <RotateCcw className="h-4 w-4" />
           間違えた単語はあとで再出題
         </div>
-        <p className="mt-2 text-sm text-slate-300">このMVPでは、苦手保存した単語と誤答を復習キューに入れる設計です。現在の候補: {favorites.length + reviewWords.length}件</p>
+        <p className="mt-2 text-sm text-slate-300">このMVPでは、苦手保存した単語と誤答を復習キューに入れる設計です。現在の候補: {favorites.length}件</p>
       </Card>
     </MobileShell>
+  );
+}
+
+export default function VocabPage() {
+  return (
+    <Suspense fallback={null}>
+      <VocabPageInner />
+    </Suspense>
   );
 }

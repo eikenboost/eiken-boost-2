@@ -1,37 +1,73 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, BookOpen, Flame, MessageSquareQuote, Mic, TrendingUp } from "lucide-react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, BookOpen, CheckCircle2, Flame, MessageSquareQuote, Mic, Sparkles, TrendingUp } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { SkillPill } from "@/components/ui/skill-pill";
 import { getStoredAssessment, getStoredProfile } from "@/lib/app-state";
 import { sampleAssessment, mockProfile } from "@/lib/mock-data";
 import { getRemainingUsage } from "@/lib/plans";
 import { jpDateLabel } from "@/lib/utils";
+import {
+  addRecommendedTask,
+  allRecommendedTasksCompleted,
+  generateBonusTask,
+  getDailyTasksServerSnapshot,
+  getDailyTasksSnapshot,
+  getExtraSessions,
+  getTodaySessionsServerSnapshot,
+  getTodaySessionsSnapshot,
+  buildTaskUrl,
+  resolveTaskEntry,
+  skillLabel,
+  subscribeStudyFlow,
+} from "@/lib/study-flow";
+import type { Skill } from "@/lib/types";
 
-const labelMap: Record<string, string> = {
-  vocab: "単語",
-  reading: "長文",
-  writing: "英作文",
-  speaking: "面接",
+const labelMap = skillLabel;
+
+const skillIconTone: Record<string, "blue" | "amber" | "emerald"> = {
+  vocab: "blue",
+  reading: "emerald",
+  writing: "amber",
+  speaking: "amber",
 };
 
 export default function AppHomePage() {
+  const router = useRouter();
   const [profile] = useState(() => (typeof window === "undefined" ? mockProfile : getStoredProfile()));
   const [assessment] = useState(() => (typeof window === "undefined" ? sampleAssessment : getStoredAssessment()));
 
-  const tasks = useMemo(
-    () => [
-      { href: "/app/vocab", title: "単語10問", meta: "5分", tone: "blue" },
-      { href: "/app/reading", title: "長文1本", meta: "5分", tone: "emerald" },
-      { href: assessment.weakAreas.includes("writing") ? "/app/writing" : "/app/speaking", title: assessment.weakAreas.includes("writing") ? "英作文1題" : "面接1題", meta: "5分", tone: "amber" },
-    ],
-    [assessment.weakAreas],
+  const tasks = useSyncExternalStore(
+    subscribeStudyFlow,
+    () => getDailyTasksSnapshot(assessment.weakAreas),
+    getDailyTasksServerSnapshot,
+  );
+  const sessions = useSyncExternalStore(
+    subscribeStudyFlow,
+    getTodaySessionsSnapshot,
+    getTodaySessionsServerSnapshot,
   );
 
   const usage = getRemainingUsage(profile.planId as "free" | "pro_monthly" | "pro_annual", profile.usedWriting, profile.usedSpeaking);
+
+  const allDone = useMemo(() => allRecommendedTasksCompleted(tasks), [tasks]);
+  const completedCount = tasks.filter((t) => t.completed).length;
+  const extraSessions = useMemo(() => getExtraSessions(sessions), [sessions]);
+
+  const startBonusTask = () => {
+    const bonus = generateBonusTask(tasks, assessment.weakAreas);
+    addRecommendedTask(bonus, assessment.weakAreas);
+    router.push(buildTaskUrl(bonus.skill, { taskId: bonus.id, source: "bonus_task", contentIndex: bonus.contentIndex }));
+  };
+
+  const openSkillShortcut = (skill: Skill) => {
+    const entry = resolveTaskEntry(skill, assessment.weakAreas);
+    router.push(buildTaskUrl(skill, entry));
+  };
 
   return (
     <MobileShell title={`こんにちは、${profile.name}`} subtitle={`${jpDateLabel()} ・ 今日の15分メニュー`}>
@@ -39,7 +75,9 @@ export default function AppHomePage() {
         <div className="flex items-center justify-between gap-4">
           <div>
             <p className="text-sm text-sky-300">今日のおすすめ</p>
-            <h2 className="mt-2 text-2xl font-black">3タスクで学習完了</h2>
+            <h2 className="mt-2 text-2xl font-black">
+              {tasks.length > 0 ? `${completedCount} / ${tasks.length} タスク完了` : "3タスクで学習完了"}
+            </h2>
             <p className="mt-2 text-sm leading-6 text-slate-300">AIが苦手分野を見て、今日やる順番まで決めています。</p>
           </div>
           <div className="rounded-3xl bg-white/10 px-4 py-3 text-center">
@@ -49,24 +87,87 @@ export default function AppHomePage() {
         </div>
       </Card>
 
-      <div className="mt-5 grid gap-3">
-        {tasks.map((task) => (
-          <Link key={task.href} href={task.href}>
-            <Card className="rounded-[1.5rem] transition hover:-translate-y-0.5">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <SkillPill tone={task.tone as "blue" | "amber" | "emerald"}>{task.meta}</SkillPill>
-                    <span className="text-xs text-slate-400">おすすめ順</span>
+      {allDone ? (
+        <Card className="mt-5 rounded-[1.75rem] bg-emerald-50">
+          <div className="flex items-center gap-2 text-emerald-700">
+            <CheckCircle2 className="h-5 w-5" />
+            <p className="text-sm font-semibold">今日のおすすめは完了しました</p>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            もっと練習したい場合は、追加のおすすめタスクに挑戦できます。
+          </p>
+          <Button onClick={startBonusTask} className="mt-4 w-full justify-between">
+            追加のおすすめタスクを始める
+            <Sparkles className="h-4 w-4" />
+          </Button>
+        </Card>
+      ) : (
+        <div className="mt-5 grid gap-3">
+          {tasks.map((task) => (
+            <button
+              key={task.id}
+              type="button"
+              disabled={task.completed}
+              onClick={() =>
+                router.push(
+                  buildTaskUrl(task.skill, {
+                    taskId: task.id,
+                    source: task.id.startsWith("bonus-") ? "bonus_task" : "recommended_task",
+                    contentIndex: task.contentIndex,
+                  }),
+                )
+              }
+              className="text-left"
+            >
+              <Card
+                className={`rounded-[1.5rem] transition ${task.completed ? "bg-slate-50" : "hover:-translate-y-0.5"}`}
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <SkillPill tone={skillIconTone[task.skill]}>{task.meta}</SkillPill>
+                      <span className="text-xs text-slate-400">
+                        {task.id.startsWith("bonus-") ? "追加のおすすめタスク" : "おすすめ順"}
+                      </span>
+                    </div>
+                    <h3 className={`mt-3 text-lg font-bold ${task.completed ? "text-slate-400 line-through" : ""}`}>
+                      {task.title}
+                    </h3>
                   </div>
-                  <h3 className="mt-3 text-lg font-bold">{task.title}</h3>
+                  {task.completed ? (
+                    <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  ) : (
+                    <ArrowRight className="h-5 w-5 text-slate-300" />
+                  )}
                 </div>
-                <ArrowRight className="h-5 w-5 text-slate-300" />
-              </div>
-            </Card>
-          </Link>
-        ))}
-      </div>
+              </Card>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {extraSessions.length > 0 ? (
+        <div className="mt-5">
+          <p className="text-sm font-semibold text-slate-700">追加でやったこと</p>
+          <div className="mt-3 grid gap-2">
+            {extraSessions.map((session) => (
+              <Card key={session.id} className="rounded-[1.25rem] bg-slate-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SkillPill tone={skillIconTone[session.category]}>
+                      {session.source === "bonus_task" ? "追加のおすすめ" : "追加練習"}
+                    </SkillPill>
+                    <span className="text-sm font-medium text-slate-600">{labelMap[session.category]}</span>
+                  </div>
+                  {typeof session.score === "number" ? (
+                    <span className="text-sm font-bold text-slate-700">{session.score}点</span>
+                  ) : null}
+                </div>
+              </Card>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-5 grid gap-4">
         <Card className="rounded-[1.75rem]">
@@ -99,10 +200,18 @@ export default function AppHomePage() {
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3">
-        <Link href="/app/vocab"><Card className="rounded-[1.5rem]"><BookOpen className="h-5 w-5 text-sky-700" /><p className="mt-3 font-semibold">単語</p></Card></Link>
-        <Link href="/app/reading"><Card className="rounded-[1.5rem]"><TrendingUp className="h-5 w-5 text-emerald-700" /><p className="mt-3 font-semibold">長文</p></Card></Link>
-        <Link href="/app/writing"><Card className="rounded-[1.5rem]"><MessageSquareQuote className="h-5 w-5 text-amber-700" /><p className="mt-3 font-semibold">英作文</p><p className="mt-1 text-xs text-slate-400">残り {usage.writingRemaining} 回</p></Card></Link>
-        <Link href="/app/speaking"><Card className="rounded-[1.5rem]"><Mic className="h-5 w-5 text-violet-700" /><p className="mt-3 font-semibold">面接</p><p className="mt-1 text-xs text-slate-400">残り {usage.speakingRemaining} 回</p></Card></Link>
+        <Card className="rounded-[1.5rem] cursor-pointer" onClick={() => openSkillShortcut("vocab")}>
+          <BookOpen className="h-5 w-5 text-sky-700" /><p className="mt-3 font-semibold">単語</p>
+        </Card>
+        <Card className="rounded-[1.5rem] cursor-pointer" onClick={() => openSkillShortcut("reading")}>
+          <TrendingUp className="h-5 w-5 text-emerald-700" /><p className="mt-3 font-semibold">長文</p>
+        </Card>
+        <Card className="rounded-[1.5rem] cursor-pointer" onClick={() => openSkillShortcut("writing")}>
+          <MessageSquareQuote className="h-5 w-5 text-amber-700" /><p className="mt-3 font-semibold">英作文</p><p className="mt-1 text-xs text-slate-400">残り {usage.writingRemaining} 回</p>
+        </Card>
+        <Card className="rounded-[1.5rem] cursor-pointer" onClick={() => openSkillShortcut("speaking")}>
+          <Mic className="h-5 w-5 text-violet-700" /><p className="mt-3 font-semibold">面接</p><p className="mt-1 text-xs text-slate-400">残り {usage.speakingRemaining} 回</p>
+        </Card>
       </div>
     </MobileShell>
   );

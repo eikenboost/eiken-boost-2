@@ -1,16 +1,54 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { SkillPill } from "@/components/ui/skill-pill";
-import { sampleReading } from "@/lib/mock-data";
+import { TaskCompletion } from "@/components/app/task-completion";
+import { FinishToday } from "@/components/app/finish-today";
+import { getReadingPassage, coachComment as buildCoachComment } from "@/lib/study-flow";
+import { useTaskFlow } from "@/lib/use-task-flow";
 
-export default function ReadingPage() {
-  const passage = sampleReading[0];
+function ReadingPageInner() {
+  const flow = useTaskFlow("reading");
+  const passage = useMemo(() => getReadingPassage(flow.params.contentIndex), [flow.params.contentIndex]);
+
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const completed = Object.keys(answers).length === passage.questions.length;
+
+  const handleComplete = () => {
+    const correctCount = passage.questions.filter((q) => answers[q.id] === q.answer).length;
+    const score = Math.round((correctCount / passage.questions.length) * 100);
+    flow.complete(score, `長文「${passage.title}」で ${passage.questions.length} 問中 ${correctCount} 問正解でした。`);
+  };
+
+  if (flow.phase === "finished") {
+    return (
+      <MobileShell title="長文トレーニング" subtitle="今日もお疲れさまでした。">
+        <FinishToday completedCount={flow.todaysCompletedCount} onGoHome={flow.goHome} />
+      </MobileShell>
+    );
+  }
+
+  if (flow.phase === "completion") {
+    return (
+      <MobileShell title="長文トレーニング" subtitle="短い本文を読み、2〜3問で理解を確認します。">
+        <TaskCompletion
+          skill="reading"
+          source={flow.params.source}
+          score={flow.score}
+          summary={flow.summary}
+          coachComment={buildCoachComment("reading", flow.score)}
+          nextButtonLabel={flow.nextButtonLabel}
+          onNextRecommended={flow.goNextRecommended}
+          onRepeatSame={flow.goRepeatSame}
+          onGoHome={flow.goHome}
+          onFinishToday={flow.finishToday}
+        />
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell title="長文トレーニング" subtitle="短い本文を読み、2〜3問で理解を確認します。">
@@ -54,8 +92,16 @@ export default function ReadingPage() {
       </div>
 
       <div className="mt-6">
-        <Button className="w-full" disabled={!completed}>この長文を完了</Button>
+        <Button onClick={handleComplete} className="w-full" disabled={!completed}>この長文を完了</Button>
       </div>
     </MobileShell>
+  );
+}
+
+export default function ReadingPage() {
+  return (
+    <Suspense fallback={null}>
+      <ReadingPageInner />
+    </Suspense>
   );
 }
