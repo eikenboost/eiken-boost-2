@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, BookOpen, CheckCircle2, Flame, MessageSquareQuote, Mic, Sparkles, TrendingUp } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
@@ -26,6 +26,7 @@ import {
   subscribeStudyFlow,
 } from "@/lib/study-flow";
 import type { Skill } from "@/lib/types";
+import { shouldReoffer } from "@/lib/paywall";
 
 const labelMap = skillLabel;
 
@@ -57,6 +58,21 @@ export default function AppHomePage() {
   const allDone = useMemo(() => allRecommendedTasksCompleted(tasks), [tasks]);
   const completedCount = tasks.filter((t) => t.completed).length;
   const extraSessions = useMemo(() => getExtraSessions(sessions), [sessions]);
+
+  // Soft re-offer: if the user previously closed the paywall, gently bring it
+  // back only on a return visit several days later (Day 7 / Day 14), never on
+  // every home-screen load.
+  useEffect(() => {
+    const reason = shouldReoffer({
+      planId: profile.planId,
+      trigger: "return_visit",
+      todaysCompletedCount: sessions.length,
+    });
+    if (reason) {
+      router.push(`/app/paywall?reoffer=${reason}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startBonusTask = () => {
     const bonus = generateBonusTask(tasks, assessment.weakAreas);

@@ -103,3 +103,21 @@ export type CompletedSession = {
   score?: number;
   userChoiceAfterCompletion?: UserChoiceAfterCompletion;
 };
+
+// --- Paywall personalization / experimentation ---
+
+/** Which personalized narrative the paywall is currently showing. Tracked as `paywall_context_type`. */
+export type PaywallContextType =
+  | "writing_weak"
+  | "speaking_weak"
+  | "reading_weak"
+  | "momentum"
+  | "limit_hit"
+  | "habit_day7"
+  | "generic";
+
+/** A/B copy variant. Kept intentionally simple (no experimentation platform). */
+export type PaywallVariant = "A" | "B";
+
+/** Why a softer re-offer of the paywall is being shown after the user previously closed it. */
+export type ReofferReason = "task_completed" | "limit_hit" | "day7" | "day14";

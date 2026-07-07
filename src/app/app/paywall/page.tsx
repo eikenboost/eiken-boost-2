@@ -1,11 +1,36 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowRight, Check, Crown } from "lucide-react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { BookOpenCheck, ClipboardCheck, MessagesSquare, X } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
-import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { creditPacks, planCatalog } from "@/lib/plans";
+import { SkillPill } from "@/components/ui/skill-pill";
+import { PlanCards } from "@/components/app/plan-cards";
+import { PlanComparison } from "@/components/app/plan-comparison";
+import { PaywallFaq } from "@/components/app/paywall-faq";
+import { getStoredProfile, getStoredAssessment } from "@/lib/app-state";
+import { mockProfile, sampleAssessment } from "@/lib/mock-data";
+import { creditPacks } from "@/lib/plans";
+import { getTodaySessionsSnapshot } from "@/lib/study-flow";
+import {
+  buildPaywallCopy,
+  fallbackWeakAreas,
+  getPaywallVariant,
+  hasHitFreeLimit,
+  markReofferedFor,
+  recordPaywallClosed,
+  recordPaywallShown,
+} from "@/lib/paywall";
+import type { ReofferReason } from "@/lib/types";
+import { trackEvent } from "@/lib/analytics";
+import { Button } from "@/components/ui/button";
+
+const valueBullets = [
+  { icon: ClipboardCheck, text: "毎日の学習メニューを自動作成" },
+  { icon: BookOpenCheck, text: "英作文を具体的に添削" },
+  { icon: MessagesSquare, text: "面接練習を何度でも改善" },
+];
 
 async function startCheckout(kind: string) {
   const response = await fetch("/api/stripe/checkout", {
@@ -17,54 +42,173 @@ async function startCheckout(kind: string) {
   if (data.url) window.location.href = data.url;
 }
 
-export default function PaywallPage() {
+function PaywallPageInner() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const reofferReason = searchParams.get("reoffer");
+
+  const [profile] = useState(() => (typeof window === "undefined" ? mockProfile : getStoredProfile()));
+  const [assessment] = useState(() => (typeof window === "undefined" ? sampleAssessment : getStoredAssessment()));
+  const [variant] = useState(() => (typeof window === "undefined" ? "A" : getPaywallVariant()));
   const [loading, setLoading] = useState<string | null>(null);
-  const plans = [planCatalog.pro_annual, planCatalog.pro_monthly, planCatalog.free];
+
+  const onboardingWeakAreas = profile.weakAreas as typeof assessment.weakAreas;
+  const weakAreas = useMemo(
+    () => fallbackWeakAreas(assessment, onboardingWeakAreas),
+    [assessment, onboardingWeakAreas],
+  );
+
+  const todaysCompletedCount = typeof window === "undefined" ? 0 : getTodaySessionsSnapshot().length;
+
+  const hitLimit = hasHitFreeLimit(profile.planId, profile.usedWriting, profile.usedSpeaking);
+
+  const copy = useMemo(
+    () => buildPaywallCopy({ weakAreas, todaysCompletedCount, hitFreeLimit: hitLimit }),
+    [weakAreas, todaysCompletedCount, hitLimit],
+  );
+
+  // Variant B: surface the personalized weakness reason directly on the Annual
+  // card itself (rather than only in the headline/summary above), so the
+  // "why annual, why now, why me" story is reinforced right at the decision point.
+  const weaknessHighlight =
+    copy.weaknessSentence && copy.contextType !== "generic"
+      ? `${copy.weaknessSentence.replace("あなたの苦手分野：", "")}を集中的に強化 → ${copy.primaryValueBullet}`
+      : null;
+
+  useEffect(() => {
+    recordPaywallShown();
+    trackEvent("paywall_viewed", { contextType: copy.contextType, variant, reoffer: reofferReason ?? undefined });
+    trackEvent("paywall_context_type", { contextType: copy.contextType });
+    if (copy.weaknessSkills.length > 0) {
+      trackEvent("paywall_weakness_personalized", { weakAreas: copy.weaknessSkills });
+    }
+    if (reofferReason) {
+      trackEvent("paywall_reoffer_shown", { reason: reofferReason });
+      markReofferedFor(reofferReason as ReofferReason);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleClose = () => {
+    recordPaywallClosed();
+    trackEvent("paywall_closed", { contextType: copy.contextType });
+    router.push("/app");
+  };
+
+  const handleSelectAnnual = async () => {
+    trackEvent("annual_selected", { contextType: copy.contextType, variant });
+    setLoading("pro_annual");
+    trackEvent("annual_checkout_started", { variant });
+    await startCheckout("pro_annual");
+    setLoading(null);
+  };
+
+  const handleSelectMonthly = async () => {
+    trackEvent("monthly_selected", { contextType: copy.contextType, variant });
+    setLoading("pro_monthly");
+    trackEvent("monthly_checkout_started", { variant });
+    await startCheckout("pro_monthly");
+    setLoading(null);
+  };
+
+  const handleContinueFree = () => {
+    trackEvent("free_continue_selected", { contextType: copy.contextType });
+    setLoading("free");
+    router.push("/app");
+  };
 
   return (
-    <MobileShell title="プラン" subtitle="年額プランをメインに、AIコストを守れる設計にしています。">
-      <Card className="rounded-[1.75rem] bg-amber-50">
-        <p className="text-sm font-semibold text-amber-800">あなたは英作文・面接が弱めです</p>
-        <p className="mt-2 text-sm leading-6 text-slate-700">AI添削と面接練習を使える回数が増えると、合格までの距離が一気に縮みます。</p>
+    <MobileShell title="プラン" subtitle="あなたに合う続け方を、正直な料金でご案内します。">
+      <button
+        type="button"
+        onClick={handleClose}
+        className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-slate-600"
+      >
+        <X className="h-3.5 w-3.5" />
+        あとで見る
+      </button>
+
+      {/* A. Personalized headline */}
+      <Card className="rounded-[2rem] bg-slate-950 text-white">
+        <SkillPill tone="blue">英検2級コーチ</SkillPill>
+        <h1 className="mt-3 text-2xl font-black leading-snug">{copy.headline}</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-300">{copy.subheadline}</p>
       </Card>
 
-      <div className="mt-5 space-y-4">
-        {plans.map((plan) => (
-          <Card key={plan.id} className={`rounded-[2rem] ${plan.highlight ? "border-sky-500 bg-sky-600 text-white shadow-xl shadow-sky-200" : ""}`}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                {plan.highlight ? <p className="inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold">{plan.badge}</p> : null}
-                <h2 className="mt-3 text-2xl font-black">{plan.name}</h2>
-                <p className={`mt-2 text-sm ${plan.highlight ? "text-sky-100" : "text-slate-500"}`}>{plan.priceLabel}</p>
+      {/* B. Personalized weakness summary */}
+      {copy.weaknessSentence ? (
+        <Card className="mt-4 rounded-[1.75rem] bg-amber-50">
+          <p className="text-sm font-semibold text-amber-800">{copy.weaknessSentence}</p>
+          <p className="mt-2 text-sm leading-6 text-slate-700">
+            苦手を見える化して、勉強のムダを減らします。Proなら弱点に合わせた練習量を確保できます。
+          </p>
+        </Card>
+      ) : null}
+
+      {copy.momentumNote ? (
+        <Card className="mt-4 rounded-[1.5rem] bg-sky-50">
+          <p className="text-sm leading-6 text-sky-800">{copy.momentumNote}</p>
+        </Card>
+      ) : null}
+
+      {copy.limitNote ? (
+        <Card className="mt-4 rounded-[1.5rem] bg-rose-50">
+          <p className="text-sm leading-6 text-rose-700">{copy.limitNote}</p>
+        </Card>
+      ) : null}
+
+      {copy.habitNote ? (
+        <Card className="mt-4 rounded-[1.5rem] bg-emerald-50">
+          <p className="text-sm leading-6 text-emerald-800">{copy.habitNote}</p>
+        </Card>
+      ) : null}
+
+      {/* C. Value section — outcomes, not just features */}
+      <div className="mt-5 grid gap-3">
+        {valueBullets.map((item) => {
+          const Icon = item.icon;
+          return (
+            <Card key={item.text} className="rounded-[1.5rem]">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-sky-100 p-2.5 text-sky-700">
+                  <Icon className="h-4 w-4" />
+                </div>
+                <p className="text-sm font-semibold text-slate-800">{item.text}</p>
               </div>
-              {plan.highlight ? <Crown className="h-6 w-6 text-amber-200" /> : null}
-            </div>
-            <ul className={`mt-5 space-y-3 text-sm ${plan.highlight ? "text-sky-50" : "text-slate-600"}`}>
-              {plan.features.map((feature) => (
-                <li key={feature} className="flex gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0" />{feature}</li>
-              ))}
-            </ul>
-            {plan.id !== "free" ? (
-              <div className="mt-5">
-                <Button
-                  className={`w-full justify-between ${plan.highlight ? "bg-white text-sky-700 hover:bg-sky-50" : ""}`}
-                  onClick={async () => {
-                    setLoading(plan.id);
-                    await startCheckout(plan.id);
-                    setLoading(null);
-                  }}
-                >
-                  {loading === plan.id ? "準備中..." : plan.highlight ? "年額ではじめる" : "月額ではじめる"}
-                  <ArrowRight className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : null}
-          </Card>
-        ))}
+            </Card>
+          );
+        })}
+        <Card className="rounded-[1.5rem] bg-slate-50">
+          <p className="text-sm leading-6 text-slate-600">模試と進捗分析で、合格までの距離がわかるようになります。</p>
+        </Card>
       </div>
 
-      <Card className="mt-5 rounded-[1.75rem]">
-        <p className="text-sm font-semibold text-sky-700">追加クレジット</p>
+      {/* D + E. Plan cards + CTAs */}
+      <div className="mt-6">
+        <PlanCards
+          loadingPlan={loading}
+          onSelectAnnual={handleSelectAnnual}
+          onSelectMonthly={handleSelectMonthly}
+          onContinueFree={handleContinueFree}
+          emphasizeSavings={variant === "A"}
+          weaknessHighlight={variant === "B" ? weaknessHighlight : null}
+        />
+      </div>
+
+      {/* Feature comparison */}
+      <div className="mt-6">
+        <PlanComparison />
+      </div>
+
+      {/* FAQ / objection handling */}
+      <div className="mt-6">
+        <PaywallFaq />
+      </div>
+
+      {/* Credit packs — for users who only want occasional writing/speaking help */}
+      <Card className="mt-6 rounded-[1.75rem]">
+        <p className="text-sm font-semibold text-sky-700">たまに使いたい方へ</p>
+        <p className="mt-1 text-xs text-slate-500">英作文・面接だけ追加したい場合はこちら</p>
         <div className="mt-4 grid gap-3">
           {creditPacks.map((pack) => (
             <div key={pack.id} className="rounded-2xl border border-slate-200 p-4">
@@ -88,6 +232,18 @@ export default function PaywallPage() {
           ))}
         </div>
       </Card>
+
+      <p className="mt-6 text-center text-xs leading-5 text-slate-400">
+        まずは自分に合うか試せます。いつでも解約でき、学習履歴はそのまま残ります。
+      </p>
     </MobileShell>
+  );
+}
+
+export default function PaywallPage() {
+  return (
+    <Suspense fallback={null}>
+      <PaywallPageInner />
+    </Suspense>
   );
 }

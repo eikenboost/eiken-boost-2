@@ -19,6 +19,7 @@ import {
   parseTaskParams,
   recordUserChoice,
 } from "@/lib/study-flow";
+import { shouldReoffer } from "@/lib/paywall";
 
 type Phase = "task" | "completion" | "finished";
 
@@ -116,9 +117,23 @@ export function useTaskFlow(skill: Skill) {
     );
   }
 
+  function maybeReofferOrHome() {
+    const completedCount = getTodaySessions().length;
+    const reason = shouldReoffer({
+      planId: profile.planId,
+      trigger: "task_completed",
+      todaysCompletedCount: completedCount,
+    });
+    if (reason) {
+      router.push(`/app/paywall?reoffer=${reason}`);
+      return;
+    }
+    router.push("/app");
+  }
+
   function goHome() {
     recordChoice("go_home");
-    router.push("/app");
+    maybeReofferOrHome();
   }
 
   function finishToday() {

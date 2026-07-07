@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { LoaderCircle, Sparkles } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
@@ -9,9 +10,11 @@ import { TaskCompletion } from "@/components/app/task-completion";
 import { FinishToday } from "@/components/app/finish-today";
 import { getWritingPrompt, coachComment as buildCoachComment } from "@/lib/study-flow";
 import { useTaskFlow } from "@/lib/use-task-flow";
+import { hasHitFreeLimit } from "@/lib/paywall";
 import type { WritingFeedback } from "@/lib/types";
 
 function WritingPageInner() {
+  const router = useRouter();
   const flow = useTaskFlow("writing");
   const prompt = useMemo(() => getWritingPrompt(flow.params.contentIndex), [flow.params.contentIndex]);
 
@@ -19,7 +22,13 @@ function WritingPageInner() {
   const [feedback, setFeedback] = useState<WritingFeedback | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const limitReached = hasHitFreeLimit(flow.profile.planId, flow.profile.usedWriting, flow.profile.usedSpeaking);
+
   const submit = async () => {
+    if (limitReached) {
+      router.push("/app/paywall");
+      return;
+    }
     setLoading(true);
     const response = await fetch("/api/ai/feedback", {
       method: "POST",
@@ -71,25 +80,35 @@ function WritingPageInner() {
         <p className="mt-3 text-sm leading-6 text-slate-600">ヒント: {prompt.hint}</p>
       </Card>
 
-      <Card className="mt-5 rounded-[1.75rem]">
-        <textarea
-          value={answer}
-          onChange={(e) => setAnswer(e.target.value)}
-          rows={10}
-          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none"
-          placeholder="80〜100語を目安に入力してください"
-        />
-        <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-          <span>{answer.trim().split(/\s+/).filter(Boolean).length} words</span>
-          <span>履歴比較は Supabase に保存可能</span>
-        </div>
-        <div className="mt-4">
-          <Button onClick={submit} disabled={loading || answer.trim().length < 20} className="w-full justify-center">
-            {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            添削を受ける
+      {limitReached ? (
+        <Card className="mt-5 rounded-[1.75rem] bg-rose-50">
+          <p className="text-sm font-semibold text-rose-700">今週の無料添削回数を使い切りました</p>
+          <p className="mt-2 text-sm leading-6 text-slate-600">Proなら英作文添削をもっと使えます。続けたい気持ちを、そのまま学習に変えましょう。</p>
+          <Button onClick={() => router.push("/app/paywall")} className="mt-4 w-full justify-center">
+            プランを見る
           </Button>
-        </div>
-      </Card>
+        </Card>
+      ) : (
+        <Card className="mt-5 rounded-[1.75rem]">
+          <textarea
+            value={answer}
+            onChange={(e) => setAnswer(e.target.value)}
+            rows={10}
+            className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none"
+            placeholder="80〜100語を目安に入力してください"
+          />
+          <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+            <span>{answer.trim().split(/\s+/).filter(Boolean).length} words</span>
+            <span>履歴比較は Supabase に保存可能</span>
+          </div>
+          <div className="mt-4">
+            <Button onClick={submit} disabled={loading || answer.trim().length < 20} className="w-full justify-center">
+              {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              添削を受ける
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {feedback ? (
         <div className="mt-5 space-y-4">
