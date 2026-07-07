@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { LoaderCircle, Mic, Sparkles } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { sampleSpeakingPrompts } from "@/lib/mock-data";
+import { TaskCompletion } from "@/components/app/task-completion";
+import { FinishToday } from "@/components/app/finish-today";
+import { getSpeakingPrompt, coachComment as buildCoachComment } from "@/lib/study-flow";
+import { useTaskFlow } from "@/lib/use-task-flow";
 import type { SpeakingFeedback } from "@/lib/types";
 
-export default function SpeakingPage() {
-  const prompt = sampleSpeakingPrompts[0];
+function SpeakingPageInner() {
+  const flow = useTaskFlow("speaking");
+  const prompt = useMemo(() => getSpeakingPrompt(flow.params.contentIndex), [flow.params.contentIndex]);
+
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<SpeakingFeedback | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,6 +30,38 @@ export default function SpeakingPage() {
     setFeedback(data);
     setLoading(false);
   };
+
+  const handleComplete = () => {
+    if (!feedback) return;
+    flow.complete(feedback.score, `面接練習が完了しました。総合評価は ${feedback.score} 点です。`);
+  };
+
+  if (flow.phase === "finished") {
+    return (
+      <MobileShell title="面接練習" subtitle="今日もお疲れさまでした。">
+        <FinishToday completedCount={flow.todaysCompletedCount} onGoHome={flow.goHome} />
+      </MobileShell>
+    );
+  }
+
+  if (flow.phase === "completion") {
+    return (
+      <MobileShell title="面接練習" subtitle="MVPではテキスト入力中心。音声UIは後から追加しやすい構成です。">
+        <TaskCompletion
+          skill="speaking"
+          source={flow.params.source}
+          score={flow.score}
+          summary={flow.summary}
+          coachComment={buildCoachComment("speaking", flow.score)}
+          nextButtonLabel={flow.nextButtonLabel}
+          onNextRecommended={flow.goNextRecommended}
+          onRepeatSame={flow.goRepeatSame}
+          onGoHome={flow.goHome}
+          onFinishToday={flow.finishToday}
+        />
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell title="面接練習" subtitle="MVPではテキスト入力中心。音声UIは後から追加しやすい構成です。">
@@ -66,8 +103,17 @@ export default function SpeakingPage() {
           <Card className="rounded-[1.75rem]"><p className="font-semibold">答え方の改善点</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.qualityFeedback.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
           <Card className="rounded-[1.75rem]"><p className="font-semibold">自然な言い換え</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.naturalPhrasing.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
           <Card className="rounded-[1.75rem] bg-violet-50"><p className="font-semibold">強いサンプル回答</p><p className="mt-3 text-sm leading-7 text-slate-700">{feedback.sampleAnswer}</p></Card>
+          <Button onClick={handleComplete} className="w-full justify-center">この練習を完了する</Button>
         </div>
       ) : null}
     </MobileShell>
+  );
+}
+
+export default function SpeakingPage() {
+  return (
+    <Suspense fallback={null}>
+      <SpeakingPageInner />
+    </Suspense>
   );
 }

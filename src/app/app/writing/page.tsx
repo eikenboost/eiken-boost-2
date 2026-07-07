@@ -1,15 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { LoaderCircle, Sparkles } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { sampleWritingPrompts } from "@/lib/mock-data";
+import { TaskCompletion } from "@/components/app/task-completion";
+import { FinishToday } from "@/components/app/finish-today";
+import { getWritingPrompt, coachComment as buildCoachComment } from "@/lib/study-flow";
+import { useTaskFlow } from "@/lib/use-task-flow";
 import type { WritingFeedback } from "@/lib/types";
 
-export default function WritingPage() {
-  const prompt = sampleWritingPrompts[0];
+function WritingPageInner() {
+  const flow = useTaskFlow("writing");
+  const prompt = useMemo(() => getWritingPrompt(flow.params.contentIndex), [flow.params.contentIndex]);
+
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<WritingFeedback | null>(null);
   const [loading, setLoading] = useState(false);
@@ -25,6 +30,38 @@ export default function WritingPage() {
     setFeedback(data);
     setLoading(false);
   };
+
+  const handleComplete = () => {
+    if (!feedback) return;
+    flow.complete(feedback.score, `英作文の添削が完了しました。スコアは ${feedback.score} 点です。`);
+  };
+
+  if (flow.phase === "finished") {
+    return (
+      <MobileShell title="英作文添削" subtitle="今日もお疲れさまでした。">
+        <FinishToday completedCount={flow.todaysCompletedCount} onGoHome={flow.goHome} />
+      </MobileShell>
+    );
+  }
+
+  if (flow.phase === "completion") {
+    return (
+      <MobileShell title="英作文添削" subtitle="日本語で短く、でも厳しくフィードバックします。">
+        <TaskCompletion
+          skill="writing"
+          source={flow.params.source}
+          score={flow.score}
+          summary={flow.summary}
+          coachComment={buildCoachComment("writing", flow.score)}
+          nextButtonLabel={flow.nextButtonLabel}
+          onNextRecommended={flow.goNextRecommended}
+          onRepeatSame={flow.goRepeatSame}
+          onGoHome={flow.goHome}
+          onFinishToday={flow.finishToday}
+        />
+      </MobileShell>
+    );
+  }
 
   return (
     <MobileShell title="英作文添削" subtitle="日本語で短く、でも厳しくフィードバックします。">
@@ -65,8 +102,17 @@ export default function WritingPage() {
           <Card className="rounded-[1.75rem]"><p className="font-semibold">構成</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.structureFeedback.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
           <Card className="rounded-[1.75rem]"><p className="font-semibold">語彙</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.vocabFeedback.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
           <Card className="rounded-[1.75rem] bg-sky-50"><p className="font-semibold">改善例</p><p className="mt-3 text-sm leading-7 text-slate-700">{feedback.improvedAnswer}</p></Card>
+          <Button onClick={handleComplete} className="w-full justify-center">この添削を完了する</Button>
         </div>
       ) : null}
     </MobileShell>
+  );
+}
+
+export default function WritingPage() {
+  return (
+    <Suspense fallback={null}>
+      <WritingPageInner />
+    </Suspense>
   );
 }
