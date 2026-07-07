@@ -1,0 +1,72 @@
+"use client";
+
+import { useState } from "react";
+import { LoaderCircle, Sparkles } from "lucide-react";
+import { MobileShell } from "@/components/layout/mobile-shell";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { sampleWritingPrompts } from "@/lib/mock-data";
+import type { WritingFeedback } from "@/lib/types";
+
+export default function WritingPage() {
+  const prompt = sampleWritingPrompts[0];
+  const [answer, setAnswer] = useState("");
+  const [feedback, setFeedback] = useState<WritingFeedback | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async () => {
+    setLoading(true);
+    const response = await fetch("/api/ai/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "writing", prompt: prompt.prompt, answer }),
+    });
+    const data = await response.json();
+    setFeedback(data);
+    setLoading(false);
+  };
+
+  return (
+    <MobileShell title="英作文添削" subtitle="日本語で短く、でも厳しくフィードバックします。">
+      <Card className="rounded-[2rem] bg-amber-50">
+        <p className="text-sm font-semibold text-amber-800">本日のお題</p>
+        <h2 className="mt-2 text-lg font-bold leading-7">{prompt.prompt}</h2>
+        <p className="mt-3 text-sm leading-6 text-slate-600">ヒント: {prompt.hint}</p>
+      </Card>
+
+      <Card className="mt-5 rounded-[1.75rem]">
+        <textarea
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+          rows={10}
+          className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-7 outline-none"
+          placeholder="80〜100語を目安に入力してください"
+        />
+        <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+          <span>{answer.trim().split(/\s+/).filter(Boolean).length} words</span>
+          <span>履歴比較は Supabase に保存可能</span>
+        </div>
+        <div className="mt-4">
+          <Button onClick={submit} disabled={loading || answer.trim().length < 20} className="w-full justify-center">
+            {loading ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+            添削を受ける
+          </Button>
+        </div>
+      </Card>
+
+      {feedback ? (
+        <div className="mt-5 space-y-4">
+          <Card className="rounded-[1.75rem] bg-slate-950 text-white">
+            <p className="text-sm text-sky-300">スコア</p>
+            <p className="mt-2 text-4xl font-black">{feedback.score}</p>
+            <p className="mt-2 text-sm text-slate-300">{feedback.coachComment}</p>
+          </Card>
+          <Card className="rounded-[1.75rem]"><p className="font-semibold">文法</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.grammarFeedback.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
+          <Card className="rounded-[1.75rem]"><p className="font-semibold">構成</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.structureFeedback.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
+          <Card className="rounded-[1.75rem]"><p className="font-semibold">語彙</p><ul className="mt-3 space-y-2 text-sm text-slate-600">{feedback.vocabFeedback.map((item) => <li key={item}>・{item}</li>)}</ul></Card>
+          <Card className="rounded-[1.75rem] bg-sky-50"><p className="font-semibold">改善例</p><p className="mt-3 text-sm leading-7 text-slate-700">{feedback.improvedAnswer}</p></Card>
+        </div>
+      ) : null}
+    </MobileShell>
+  );
+}
