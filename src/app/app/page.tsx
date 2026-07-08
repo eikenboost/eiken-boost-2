@@ -26,6 +26,7 @@ import {
 } from "@/lib/study-flow";
 import type { Skill } from "@/lib/types";
 import { shouldReoffer } from "@/lib/paywall";
+import { useSyncProfileFromSupabase } from "@/lib/supabase/sync-profile";
 
 const labelMap = skillLabel;
 
@@ -46,6 +47,12 @@ export default function AppHomePage() {
   // localStorage-backed values right after hydration.
   const [profile] = useStoredProfile();
   const assessment = useStoredAssessment();
+
+  // Keep the local plan/credits in sync with Supabase for signed-in users —
+  // covers the case where a purchase completed elsewhere (another tab/device,
+  // or the paywall's own success redirect already resolved) before landing
+  // back on the home screen.
+  useSyncProfileFromSupabase();
 
   const tasks = useSyncExternalStore(
     subscribeStudyFlow,
