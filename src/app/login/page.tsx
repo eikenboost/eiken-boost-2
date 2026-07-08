@@ -1,23 +1,28 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Sparkles } from "lucide-react";
 import { LogoMark } from "@/components/layout/logo";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-export default function LoginPage() {
+function LoginPageInner() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("デモモードでもすぐ試せます。");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Where to send the user after they finish the magic-link flow — e.g. back
+  // to the paywall if they were sent here mid-checkout. Defaults to
+  // /onboarding (the normal first-run destination).
+  const next = searchParams.get("next") ?? "/onboarding";
 
   const signIn = async () => {
     const client = createSupabaseBrowserClient();
     if (!client) {
-      router.push("/onboarding");
+      router.push(next);
       return;
     }
 
@@ -25,7 +30,7 @@ export default function LoginPage() {
     const { error } = await client.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`,
       },
     });
     setLoading(false);
@@ -53,7 +58,7 @@ export default function LoginPage() {
             ログインリンクを送る
             <Mail className="h-4 w-4" />
           </Button>
-          <Button variant="secondary" onClick={() => router.push("/onboarding")} className="w-full justify-between">
+          <Button variant="secondary" onClick={() => router.push(next)} className="w-full justify-between">
             デモで続ける
             <Sparkles className="h-4 w-4" />
           </Button>
@@ -61,5 +66,13 @@ export default function LoginPage() {
         </div>
       </Card>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
   );
 }

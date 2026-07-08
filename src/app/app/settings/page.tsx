@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CreditCard, LogOut, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
@@ -7,13 +8,30 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useStoredProfile } from "@/lib/app-state";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useSyncProfileFromSupabase } from "@/lib/supabase/sync-profile";
 
 export default function SettingsPage() {
   const [profile, updateProfile] = useStoredProfile();
   const router = useRouter();
+  const [portalLoading, setPortalLoading] = useState(false);
+  useSyncProfileFromSupabase();
 
   const updateExamDate = (examDate: string) => {
     updateProfile({ examDate });
+  };
+
+  const managePlan = async () => {
+    // Paid users go to the real Stripe customer portal (cancel / change card
+    // / view invoices); free users go straight to the upgrade paywall.
+    if (profile.planId === "free") {
+      router.push("/app/paywall");
+      return;
+    }
+    setPortalLoading(true);
+    const response = await fetch("/api/stripe/portal", { method: "POST" });
+    const data = await response.json();
+    setPortalLoading(false);
+    if (data.url) window.location.href = data.url;
   };
 
   return (
@@ -42,7 +60,9 @@ export default function SettingsPage() {
 
         <Card className="rounded-[1.75rem]">
           <div className="grid gap-3">
-            <Button variant="secondary" onClick={() => router.push("/app/paywall")} className="w-full">プランを変更する</Button>
+            <Button variant="secondary" onClick={managePlan} disabled={portalLoading} className="w-full">
+              {portalLoading ? "読み込み中..." : profile.planId === "free" ? "プランを変更する" : "支払い・解約の管理"}
+            </Button>
             <Button
               variant="ghost"
               onClick={async () => {

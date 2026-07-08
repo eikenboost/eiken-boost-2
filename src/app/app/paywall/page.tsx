@@ -24,6 +24,7 @@ import {
 import type { ReofferReason } from "@/lib/types";
 import { trackEvent } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
+import { useSyncProfileFromSupabase } from "@/lib/supabase/sync-profile";
 
 const valueBullets = [
   { icon: ClipboardCheck, text: "毎日の学習メニューを自動作成" },
@@ -45,6 +46,7 @@ function PaywallPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const reofferReason = searchParams.get("reoffer");
+  const justCheckedOut = searchParams.get("checkout") === "success";
 
   // Hydration-safe pattern: this page is statically pre-rendered, so the
   // server always renders with neutral defaults (mock profile/assessment,
@@ -58,6 +60,13 @@ function PaywallPageInner() {
   const [profile] = useStoredProfile();
   const assessment = useStoredAssessment();
   const variant = usePaywallVariant();
+
+  // After a successful Stripe checkout, the webhook updates Supabase
+  // asynchronously (usually within a second or two). Re-pull the user's
+  // real plan/credits here so the paywall — and the rest of the app, since
+  // this writes into the same localStorage-backed profile — reflects the
+  // purchase without requiring a manual refresh or re-login.
+  useSyncProfileFromSupabase({ pollForUpdate: justCheckedOut });
   const todaysCompletedCount = useSyncExternalStore(
     subscribeStudyFlow,
     () => getTodaySessionsSnapshot().length,
