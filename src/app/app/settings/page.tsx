@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CreditCard, LogOut, Trash2 } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
@@ -79,6 +80,21 @@ export default function SettingsPage() {
               <Trash2 className="mr-2 h-4 w-4" />
               アカウント削除
             </Button>
+          </div>
+        </Card>
+
+        <Card className="rounded-[1.75rem] bg-slate-50">
+          <p className="text-sm font-semibold text-slate-500">規約・ポリシー</p>
+          <div className="mt-3 space-y-2 text-sm">
+            <Link href="/legal/tokushoho" className="block text-sky-700 underline">
+              特定商取引法に基づく表記
+            </Link>
+            <Link href="/legal/terms" className="block text-sky-700 underline">
+              利用規約
+            </Link>
+            <Link href="/legal/privacy" className="block text-sky-700 underline">
+              プライバシーポリシー
+            </Link>
           </div>
         </Card>
       </div>

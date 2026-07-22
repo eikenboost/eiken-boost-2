@@ -87,6 +87,18 @@ export default function LandingPage() {
           </div>
         </div>
       </Card>
+
+      <footer className="mt-8 flex flex-wrap justify-center gap-x-4 gap-y-2 text-xs text-slate-400">
+        <Link href="/legal/tokushoho" className="underline hover:text-slate-600">
+          特定商取引法に基づく表記
+        </Link>
+        <Link href="/legal/terms" className="underline hover:text-slate-600">
+          利用規約
+        </Link>
+        <Link href="/legal/privacy" className="underline hover:text-slate-600">
+          プライバシーポリシー
+        </Link>
+      </footer>
     </main>
   );
 }
