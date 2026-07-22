@@ -47,6 +47,11 @@ npm run dev
 - 互換 API を使う場合は `OPENAI_BASE_URL` を差し替えるだけで動きます
 - `src/lib/ai.ts` で provider を一元管理しています
 - API キー未設定時は厳しめのデモ添削を返します
+- 本番環境は GenSpark の LLM Proxy（OpenAI 互換）を利用しています
+  - `OPENAI_API_KEY`: GenSpark プロジェクトの「設定 > APIキー」で発行したキー
+  - `OPENAI_BASE_URL=https://www.genspark.ai/api/llm_proxy/v1`
+  - `OPENAI_MODEL=gpt-5-mini`（利用可能なモデルは `gpt-5` / `gpt-5-mini` / `gpt-5-nano` 系のみ）
+  - 他の OpenAI 互換プロバイダ（例: 本物の OpenAI API）を使う場合は、上記 3 つの環境変数を差し替えるだけで切り替え可能です
 
 ## MVP 方針
 - 最初の useful moment を最短化
