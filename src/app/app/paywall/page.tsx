@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BookOpenCheck, ClipboardCheck, MessagesSquare, X } from "lucide-react";
 import { MobileShell } from "@/components/layout/mobile-shell";
@@ -259,6 +260,19 @@ function PaywallPageInner() {
 
       <p className="mt-6 text-center text-xs leading-5 text-slate-400">
         まずは自分に合うか試せます。いつでも解約でき、学習履歴はそのまま残ります。
+      </p>
+      <p className="mt-3 text-center text-xs leading-5 text-slate-400">
+        <Link href="/legal/tokushoho" className="underline hover:text-slate-600">
+          特定商取引法に基づく表記
+        </Link>
+        {" ・ "}
+        <Link href="/legal/terms" className="underline hover:text-slate-600">
+          利用規約
+        </Link>
+        {" ・ "}
+        <Link href="/legal/privacy" className="underline hover:text-slate-600">
+          プライバシーポリシー
+        </Link>
       </p>
     </MobileShell>
   );
